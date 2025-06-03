@@ -1,37 +1,52 @@
-# scripts/crop_from_boxed_image.py
-
 import cv2
 import os
+from pathlib import Path
 
-def extract_objects_from_box_image(img_path, out_dir):
-    os.makedirs(out_dir, exist_ok=True)
-    image = cv2.imread(img_path)
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+# 경로 설정
+images_dir = Path("data/image")
+labels_dir = Path("data/label")
+output_dir = Path("data/cropped")
+output_dir.mkdir(parents=True, exist_ok=True)
 
-    edges = cv2.Canny(gray, 50, 150)
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+# 이미지 파일 순회
+for image_path in images_dir.glob("*.jpg"):
+    label_path = labels_dir / f"{image_path.stem}.txt"
+    
+    # 라벨 없으면 스킵
+    if not label_path.exists():
+        continue
 
-    index = 0
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        if w < 50 or h < 50 or w/h > 5 or h/w > 5:
+    # 이미지 불러오기
+    image = cv2.imread(str(image_path))
+    if image is None:
+        print(f"이미지 로딩 실패: {image_path}")
+        continue
+    h, w = image.shape[:2]
+
+    # 라벨 읽고 crop
+    with open(label_path, "r") as f:
+        lines = f.readlines()
+
+    for i, line in enumerate(lines):
+        parts = line.strip().split()
+        if len(parts) != 5:
             continue
 
-        cropped = image[y:y+h, x:x+w]
-        out_name = os.path.join(
-            out_dir,
-            f"{os.path.splitext(os.path.basename(img_path))[0]}_crop_{index}.jpg"
-        )
-        cv2.imwrite(out_name, cropped)
-        index += 1
+        cls_id, x_center, y_center, bw, bh = map(float, parts)
 
-    print(f"[✓] {index}개 객체 추출 완료 → {os.path.basename(img_path)}")
+        # YOLO 정규화 좌표 → 실제 픽셀 좌표
+        x1 = int((x_center - bw / 2) * w)
+        y1 = int((y_center - bh / 2) * h)
+        x2 = int((x_center + bw / 2) * w)
+        y2 = int((y_center + bh / 2) * h)
 
-def extract_all_from_folder(input_folder="input_images", out_dir="data/unlabeled"):
-    files = [f for f in os.listdir(input_folder) if f.lower().endswith((".jpg", ".png"))]
-    for f in files:
-        full_path = os.path.join(input_folder, f)
-        extract_objects_from_box_image(full_path, out_dir)
+        # 경계 조건 보정
+        x1, y1 = max(0, x1), max(0, y1)
+        x2, y2 = min(w, x2), min(h, y2)
 
-if __name__ == "__main__":
-    extract_all_from_folder()
+        crop = image[y1:y2, x1:x2]
+        if crop.size == 0:
+            continue
+
+        output_path = output_dir / f"{image_path.stem}_{i}.jpg"
+        cv2.imwrite(str(output_path), crop)

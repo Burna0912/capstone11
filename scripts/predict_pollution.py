@@ -1,25 +1,40 @@
+import os
 import torch
-from torchvision.io import read_image
+from torchvision import transforms
+from PIL import Image
 from efficientnet_pytorch import EfficientNet
-from utils.transforms import get_transforms
 
-CLASSES = ['clean', 'polluted']
+# 모델 경로와 클래스 정의
+MODEL_PATH = "outputs/efficientnet_pollution.pth"
+CLASS_NAMES = ['clean', 'polluted']  # 클래스 순서 주의
 
-def predict(image_path):
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# 모델 로드
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = EfficientNet.from_name('efficientnet-b0')
+model._fc = torch.nn.Linear(model._fc.in_features, len(CLASS_NAMES))
+model.load_state_dict(torch.load(MODEL_PATH, map_location=device))
+model.eval().to(device)
 
-    model = EfficientNet.from_pretrained('efficientnet-b0')
-    model._fc = torch.nn.Linear(model._fc.in_features, 2)
-    model.load_state_dict(torch.load("models/pollution_efficientnet.pt", map_location=device))
-    model.eval().to(device)
+# 이미지 전처리
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+    transforms.Normalize([0.485, 0.456, 0.406], 
+                         [0.229, 0.224, 0.225])
+])
 
-    image = read_image(image_path).float() / 255
-    image = get_transforms()(image).unsqueeze(0).to(device)
+# 예측할 이미지 폴더
+image_dir = "test_images"  # 추론용 이미지가 담긴 폴더 (직접 준비)
+image_paths = [os.path.join(image_dir, fname) for fname in os.listdir(image_dir)
+               if fname.lower().endswith(('.jpg', '.png', '.jpeg'))]
+
+# 추론 시작
+for img_path in image_paths:
+    image = Image.open(img_path).convert("RGB")
+    input_tensor = transform(image).unsqueeze(0).to(device)
 
     with torch.no_grad():
-        output = model(image)
-        pred = output.argmax(dim=1).item()
-        print(f"[pollution] 예측 결과: {CLASSES[pred]}")
-
-if __name__ == "__main__":
-    predict("test.jpg")
+        output = model(input_tensor)
+        _, pred = torch.max(output, 1)
+        label = CLASS_NAMES[pred.item()]
+        print(f"{os.path.basename(img_path)} → 예측 결과: {label}")
