@@ -7,8 +7,8 @@ from efficientnet_pytorch import EfficientNet
 from torch.utils.data import DataLoader
 
 # 경로 설정
-train_dir = "data/train"
-val_dir = "data/val"
+train_dir = "data/pollute/train"
+val_dir = "data/pollute/val"
 pretrained_weights_path = "weights/efficientnet-b0-355c32eb.pth"
 MODEL_NAME = 'efficientnet-b0'
 NUM_CLASSES = 2
