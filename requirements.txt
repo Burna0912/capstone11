@@ -1,6 +1,0 @@
-torch>=2.0.0
-torchvision
-efficientnet_pytorch
-opencv-python
-numpy
-Pillow
